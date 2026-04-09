@@ -222,3 +222,5 @@ beaker/
 
 checkpoints/
 *.html
+
+*debug*
