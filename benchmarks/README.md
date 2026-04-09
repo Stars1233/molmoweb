@@ -14,6 +14,7 @@ The `benchmarks/` directory contains the unified evaluation framework for MolmoW
 - [Synthetic Data Generation](#synthetic-data-generation)
 - [Adding a Custom Agent](#adding-a-custom-agent)
 - [CLI Reference](#cli-reference)
+- [Additional Notes](#additional-notes)
 
 ---
 
@@ -30,25 +31,27 @@ Both stages are driven by `benchmarks/benchmarks.py`, a [Fire](https://github.co
 
 ## Benchmarks
 
-| Name | `--benchmark` | Tasks | Default Judge |
-|------|--------------|-------|---------------|
-| WebVoyager | `webvoyager` | 643 | `webvoyager` (GPT-4o) |
-| Online Mind2Web | `online_mind2web` | 137 | `webjudge_online_mind2web` (o4-mini) |
-| DeepShop | `deepshop` | 300 | `deepshop_judge` (GPT-4o) |
-| WebTailBench | `webtailbench` | 150 | `webvoyager` (GPT-4o) |
+| Name | `--benchmark` | Num Tasks | Default Judge |
+|------|--------------|-----------|----------------|
+| WebVoyager | `webvoyager` | 595 | `webvoyager` (GPT-4o) |
+| Online Mind2Web | `online_mind2web` | 300 | `webjudge_online_mind2web` (o4-mini) |
+| DeepShop | `deepshop` | 150 | `deepshop_judge` (GPT-4o) |
+| WebTailBench | `webtailbench` | 609 | `webvoyager` (GPT-4o) |
 | Custom | `custom` | *(your data)* | `webvoyager` (GPT-4o) |
 
 Each benchmark ships with a data file under `benchmarks/jsons/`. The `custom` benchmark requires you to supply `--data_path` pointing to a JSON array of task objects (see [Custom Tasks](#custom-tasks)).
 
+> **Note on time-sensitive tasks.** Some benchmarks contain tasks that reference specific dates — e.g., "Find a flight from X to Y on April 2, 2026." Such tasks become infeasible as time passes and need to be updated before re-running. This affects WebVoyager in particular: the included JSON is the exact file used for our evaluation in early March 2026, and some tasks have since become outdated, meaning exact score reproduction is no longer possible. Keep this in mind when comparing results.
+
 ### Benchmark Details
 
-**WebVoyager** — open-ended web tasks spanning 15 websites. Judged by GPT-4o using screenshots and the agent's final answer.
+**[WebVoyager](https://arxiv.org/pdf/2401.13919)** — ~600 open-ended web tasks spanning 15 websites. Judged by GPT-4o using screenshots and the agent's final answer.
 
-**Online Mind2Web** — real-world web tasks with three difficulty levels (easy, medium, hard). Judged by `webjudge_online_mind2web`, which uses o4-mini to score trajectories against key points extracted from the task.
+**[Online Mind2Web](https://arxiv.org/pdf/2504.01382)** ([leaderboard](https://huggingface.co/spaces/osunlp/Online_Mind2Web_Leaderboard)) — 300 real-world web tasks from ~130 wensites with three difficulty levels (easy, medium, hard). Judged by `webjudge_online_mind2web`, which uses o4-mini to score trajectories against key points extracted from the task.
 
-**DeepShop** — e-commerce shopping tasks requiring the agent to apply filters, sort, and identify product attributes. Judged by a specialized GPT-4o prompt that checks attribute, filter, and sort dimensions independently.
+**[DeepShop](https://arxiv.org/abs/2506.02839)** — 150 tasks on Amazon.com requiring the agent to apply filters, sort, and identify product attributes. Judged by a specialized GPT-4o prompt.
 
-**WebTailBench** — long-tail web tasks covering uncommon but realistic scenarios. Judged by GPT-4o using the WebVoyager judge format.
+**[WebTailBench](https://www.microsoft.com/en-us/research/wp-content/uploads/2025/11/Fara-7B-An-Efficient-Agentic-Model-for-Computer-Use.pdf)** — 609 long-tail web tasks covering uncommon but realistic scenarios. Judged by GPT-4o using the WebVoyager judge format.
 
 ---
 
@@ -57,9 +60,9 @@ Each benchmark ships with a data file under `benchmarks/jsons/`. The `custom` be
 | `--agent_type` | Model | Input | Required Keys |
 |----------------|-------|-------|---------------|
 | `molmoweb` | MolmoWeb (local server) | Screenshot | *(none — uses `--endpoint_or_checkpoint`)* |
-| `gemini_cua` | Gemini computer-use | Screenshot | `GOOGLE_API_KEY` |
-| `gemini_axtree` | Gemini | Screenshot + accessibility tree | `GOOGLE_API_KEY` |
-| `gpt_axtree` | GPT-4o | Screenshot + accessibility tree | `OPENAI_API_KEY` |
+| `gemini_cua` | `gemini-2.5-computer-use-preview` | Screenshot | `GOOGLE_API_KEY` |
+| `gemini_axtree` | `gemini-3-flash-preview` | Accessibility tree | `GOOGLE_API_KEY` |
+| `gpt_axtree` | `gpt-5` (via `GPT_AXTREE_MODEL` env var) | Accessibility tree | `OPENAI_API_KEY` |
 
 ### `molmoweb`
 
@@ -77,7 +80,6 @@ Sends screenshots to a running MolmoWeb model server (see [Quick Start](../READM
 |--------------------|-------------|
 | `fastapi` | HTTP endpoint (model server started with `scripts/start_server.sh`) |
 | `native` | In-process OLMo-native checkpoint |
-| `local` | In-process HuggingFace checkpoint (single-process only, `--num_workers 0`) |
 | `modal` | Modal serverless endpoint |
 
 For `native` and `local`, pass the path or HF model ID via `--endpoint_or_checkpoint`:
@@ -87,13 +89,17 @@ For `native` and `local`, pass the path or HF model ID via `--endpoint_or_checkp
 --endpoint_or_checkpoint ./checkpoints/MolmoWeb-4B-Native
 ```
 
-### `gemini_cua` / `gemini_axtree`
+### `gemini_cua`
 
-Uses the Gemini API. Set `GOOGLE_API_KEY` before running.
+Uses [Gemini computer-use](https://ai.google.dev/gemini-api/docs/computer-use) (`gemini-2.5-computer-use-preview` by default) with screenshot input. Set `GOOGLE_API_KEY` before running.
+
+### `gemini_axtree`
+
+Uses `gemini-3-flash-preview` by default with accessibility tree input only (no screenshot). Set `GOOGLE_API_KEY` before running.
 
 ### `gpt_axtree`
 
-Uses the OpenAI API. Set `OPENAI_API_KEY` before running.
+Uses accessibility tree input only (no screenshot). Model defaults to `gpt-5` and can be overridden via the `GPT_AXTREE_MODEL` environment variable. Set `OPENAI_API_KEY` before running.
 
 ---
 
@@ -112,13 +118,14 @@ Runs a local Chromium instance via Playwright. No external accounts required. Go
 Requires Playwright browsers to be installed:
 
 ```bash
-uv run playwright install
-uv run playwright install --with-deps chromium
+uv run playwright install && uv run playwright install-deps
 ```
 
 ### `browserbase`
 
 Runs browsers in the cloud via [Browserbase](https://browserbase.com). Required for benchmarks that need persistent sessions, residential IPs, or CAPTCHA handling (e.g., Online Mind2Web). Supports high parallelism.
+
+> To reproduce MolmoWeb's published results, use Browserbase with the **Advanced Stealth** add-on enabled. This reduces bot-detection failures on sites like Amazon and reduces variability across runs.
 
 ```bash
 --env_type browserbase
@@ -168,7 +175,7 @@ uv run python -m benchmarks.benchmarks run \
 ```bash
 uv run python -m benchmarks.benchmarks run \
     --benchmark custom \
-    --data_path ./my_tasks.json \
+    --data_path ./demo_task.json \
     --results_dir ./results/custom_run \
     --agent_type molmoweb \
     --inference_mode fastapi \
@@ -178,16 +185,21 @@ uv run python -m benchmarks.benchmarks run \
     --env_type simple
 ```
 
-### Parallelism notes
-
-- `--num_workers` controls how many tasks run in parallel. Each worker runs in its own subprocess.
-- With `--env_type simple`, keep workers low (1–3) to avoid competing for local CPU/memory.
-- With `--env_type browserbase`, you can run 5–20 workers depending on your Browserbase plan.
-- `--inference_mode local` is incompatible with `num_workers > 0` (the model can't be shared across processes). Use `--num_workers 0` for local inference, or switch to `fastapi`/`modal` for parallel runs.
-
 ### Resuming interrupted runs
 
 The runner skips tasks that already have a `trajectory.json` on disk. If a run is interrupted, just re-run the same command — it will pick up where it left off.
+
+### Retry logic
+
+The runner has two layers of automatic retry:
+
+**Per-step retry (episode level).** Each episode step is retried up to 2 times (with a 5-second wait) before being marked as failed. This handles transient browser or network errors within a single task.
+
+**Per-run retry (batch level).** After all workers finish, `get_trajectories` checks the overall completion rate and automatically re-queues incomplete tasks. It will re-run up to **5 times** (`--max_reruns`), and only triggers a re-run if either:
+- at least **20 tasks** are still missing (`--min_remaining_to_rerun`), or
+- the completion rate is below **90%**.
+
+Each task also has a wall-clock timeout (`--traj_timeout_in_s`, default 1800s). Tasks that exceed this are terminated and left without a `trajectory.json`, so they get picked up on the next retry pass.
 
 ---
 
@@ -309,7 +321,7 @@ uv run python -m benchmarks.benchmarks run [OPTIONS]
 | `agent_type` | `str` | *(required)* | Agent: `molmoweb`, `gemini_cua`, `gemini_axtree`, `gpt_axtree`. |
 | `benchmark` | `str` | `"custom"` | Benchmark: `custom`, `deepshop`, `webvoyager`, `online_mind2web`, `webtailbench`. |
 | `data_path` | `str` | `None` | Override the default data file for the benchmark. Required for `custom`. |
-| `inference_mode` | `str` | `None` | `fastapi`, `local`, `modal`, or `native`. Required for `molmoweb`. |
+| `inference_mode` | `str` | `None` | `fastapi`, `native`, or `modal`. Required for `molmoweb`. |
 | `endpoint_or_checkpoint` | `str` | `None` | HTTP URL (fastapi/modal) or local path / HF model ID (local/native). |
 | `device` | `str` | `None` | CUDA device for local inference, e.g. `cuda:0`. |
 | `api_key` | `str` | `None` | API key override (Gemini, GPT). Defaults to env var. |
@@ -340,3 +352,17 @@ uv run python -m benchmarks.benchmarks judge [OPTIONS]
 | `num_workers` | `int` | `30` | Parallel judging workers. |
 | `seed` | `int` | `123` | Random seed. |
 | `grouping_mode` | `str` | *(benchmark default)* | How to group results in the report (`website`, `online_mind2web`, `deepshop_paper`). |
+
+
+## Additional Notes
+
+Web browser agent evaluation is inherently stochastic. The same task can produce different screenshots and outcomes depending on:
+
+- **IP and geolocation** — e.g., a store's "nearby" section varies by location.
+- **Time of year** — holiday promotions and seasonal content change the page layout.
+- **A/B tests** — websites silently bucket users into different UI variants.
+- **Advertisements** — banner content changes per session and can affect screenshots.
+- **Anti-bot measures** — websites update their automation detection over time. A site that worked previously may start returning 404s or maintenance pages without warning.
+- **LLM judges** — since judges are API-based, their verdicts have some variance across runs.
+
+The numbers reported in the paper are averages over 5 runs completed in March 2026. A single evaluation run at a later date may produce a somewhat different score.
