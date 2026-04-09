@@ -22,7 +22,6 @@ from tqdm import tqdm
 from olmo import tokenizer
 from olmo.data.dataset import (
     WEB_DATA_HOME,
-    WEBOLMO_DATASET_VERSION,
     Dataset,
     DatasetBase,
 )

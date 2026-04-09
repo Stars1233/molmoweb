@@ -33,7 +33,6 @@
   - [Downloading Data](#downloading-data)
   - [Downloading Pretrained Checkpoints](#downloading-pretrained-checkpoints)
   - [SFT Training](#sft-training)
-  - [Key Training Arguments](#key-training-arguments)
 - [Grounding Evaluation](#grounding-evaluation)
 - [License](#license)
 - [TODO](#todo)
@@ -357,31 +356,16 @@ cd train
 uv sync
 ```
 
-Set the following environment variables before training:
-
-```
-WANDB_API_KEY=your_wandb_key
-HF_ACCESS_TOKEN=your_hf_token
-OPENAI_API_KEY=your_openai_key   # used in some evaluations
-OLMO_SHARED_FS=1                 # for multi-node jobs on a shared filesystem
-OMP_NUM_THREADS=8
-```
-
 ### Downloading Data
 
-MolmoWeb training data is hosted on HuggingFace under the [MolmoWeb Data collection](https://huggingface.co/collections/allenai/molmoweb-data). Set `WEBOLMO_DATA_DIR` to where you want the data stored (defaults to `/weka/oe-training-default/webolmo/datasets`):
+MolmoWeb training data is hosted on HuggingFace under the [MolmoWeb Data collection](https://huggingface.co/collections/allenai/molmoweb-data). Set `WEBOLMO_DATA_DIR` to where you want the data stored:
 
 ```bash
-export WEBOLMO_DATA_DIR=/path/to/webolmo/datasets
-```
-
-Then download all datasets with:
-
-```bash
+export WEBOLMO_DATA_DIR=/path/to/datasets
 bash scripts/download_datasets.sh
 ```
 
-This downloads the following datasets from HuggingFace:
+This downloads the following datasets:
 
 | Dataset | HuggingFace Repo | Description |
 |---|---|---|
@@ -392,7 +376,7 @@ This downloads the following datasets from HuggingFace:
 | SyntheticSkills | `allenai/MolmoWeb-SyntheticSkills` | Synthetic atomic skill demonstrations |
 | HumanSkills | `allenai/MolmoWeb-HumanSkills` | Human atomic skill demonstrations |
 
-Training also uses image pointing data from [Molmo/PixMo](https://huggingface.co/collections/allenai/pixmo-674563dc2e11d2f68e4a4901). Set `DATA_DIR` / `MOLMO_DATA_DIR` to where those are stored.
+Training also uses image pointing data from [Molmo/PixMo](https://huggingface.co/collections/allenai/pixmo-674563dc2e11d2f68e4a4901). Set `DATA_DIR` / `MOLMO_DATA_DIR` to where those are stored (default to the same `WEBOLMO_DATA_DIR`).
 
 ### Downloading Pretrained Checkpoints
 
@@ -412,20 +396,17 @@ This saves the checkpoint to `./checkpoints/MolmoWeb-Pretrained-8B` (or `-4B`). 
 
 ### SFT Training
 
-The entry point is `train/launch_scripts/train.py`. The first positional argument is the data mixture name and the second is the path to the starting checkpoint (a Molmo2 pretrained or SFT checkpoint).
-
-The easiest way to launch training is via `scripts/run_train.sh`, which wraps `torchrun` with the default configuration:
+Configure the variables at the top of `train/run_train.sh`, then run:
 
 ```bash
-bash scripts/run_train.sh
+cd train
+bash run_train.sh
 ```
-
-Key variables to configure at the top of the script:
 
 | Variable | Default | Description |
 |---|---|---|
-| `CHECKPOINT_PATH` | Molmo2 4B step30000 | Starting checkpoint path |
-| `MIXTURE` | `molmoweb` | Training data mixture (`molmoweb` or `debug`) |
+| `CHECKPOINT_PATH` | MolmoWeb-Pretrained-4B | Path to pretrained starting checkpoint |
+| `MIXTURE` | `molmoweb` | Data mixture (`molmoweb` or `debug`) |
 | `NUM_GPUS` | `8` | GPUs per node |
 | `GLOBAL_BATCH_SIZE` | `64` | Total batch size across all GPUs |
 | `DEVICE_BATCH_SIZE` | `2` | Per-GPU batch size |
@@ -433,104 +414,31 @@ Key variables to configure at the top of the script:
 | `DURATION` | `500` | Number of training steps |
 | `SAVE_INTERVAL` | `100` | Checkpoint save frequency (steps) |
 
-To launch a debug run directly:
-
-```bash
-cd train
-torchrun -m --nproc-per-node 1 \
-  launch_scripts.train debug debug \
-  --save_folder=dbg \
-  --device_batch_size 1 \
-  --duration 10 \
-  --global_batch_size 2
-```
-
-### Key Training Arguments
-
-| Argument | Description |
-|---|---|
-| `mixture` | Data mixture: `molmoweb`, `hero`, or `debug` |
-| `checkpoint` | Path to the starting checkpoint (or `debug`) |
-| `--seq_len` | Sequence length (default: `auto`) |
-| `--global_batch_size` | Total batch size |
-| `--device_batch_size` | Per-device batch size |
-| `--duration` | Number of training steps |
-| `--save_interval` | Checkpoint save frequency |
-| `--connector_lr` | LR for the vision-language connector (default: `5e-6`) |
-| `--llm_lr` | LR for the LLM backbone (default: `1e-5`) |
-| `--vit_lr` | LR for the vision encoder (default: `5e-6`) |
-| `--warmup_steps` | LR warmup steps (default: `200`) |
-| `--num_checkpoints_to_keep` | How many recent checkpoints to retain |
-
 ---
 
 ## Grounding Evaluation
 
-MolmoWeb can be evaluated on grounding benchmarks to measure how accurately the model predicts click coordinates for UI elements. The entry point is `launch_scripts.eval`, run via `torchrun` from inside the `train/` directory.
-
-### Supported Benchmarks
+MolmoWeb can be evaluated on grounding benchmarks to measure how accurately the model predicts click coordinates for UI elements.
 
 | Benchmark | Task name |
 |---|---|
 | [ScreenSpot](https://huggingface.co/datasets/rootsautomation/ScreenSpot) | `screenspot` |
 | [ScreenSpot-v2](https://huggingface.co/datasets/likaixin/ScreenSpot-v2) | `screenspot_v2` |
-| [WebClick](https://huggingface.co/datasets/allenai/MolmoWeb-SyntheticGround) | `webclick` |
-| [GroundUI-1K](https://huggingface.co/datasets/BigAction/GroundUI-1K) | `groundui_1k` |
 
-### Running Grounding Eval
-
-The easiest way is via `train/run_ground_eval.sh`. Configure these variables at the top of the script:
-
-| Variable | Description |
-|---|---|
-| `CHECKPOINT_PATH` | Path to the checkpoint to evaluate |
-| `MIXTURE` | Comma-separated list of `task:split` pairs (e.g. `screenspot:test,screenspot_v2:test`) |
-| `NUM_GPUS` | Number of GPUs to use |
-| `DEVICE_BATCH_SIZE` | Per-GPU batch size |
-| `SAVE_FOLDER` | Directory to write results |
-
-Then run:
+Configure the variables at the top of `train/run_ground_eval.sh`, then run:
 
 ```bash
 cd train
 bash run_ground_eval.sh
 ```
 
-Required environment variables:
-
-```bash
-export DATA_DIR=/path/to/molmo/data          # Molmo/PixMo image pointing data
-export MOLMO_DATA_DIR=$DATA_DIR
-export WEBOLMO_DATA_DIR=/path/to/webolmo/datasets
-export WEBOLMO_DATASET_VERSION=<dataset_version>
-```
-
-To run directly with `torchrun`:
-
-```bash
-cd train
-DATA_DIR=... MOLMO_DATA_DIR=... WEBOLMO_DATA_DIR=... WEBOLMO_DATASET_VERSION=... \
-torchrun --nproc-per-node 1 -m \
-  launch_scripts.eval /path/to/checkpoint \
-  screenspot:test,screenspot_v2:test \
-  --save_dir=./results/eval_run \
-  --device_batch_size 2 \
-  --include_image
-```
-
-### Key Eval Arguments
-
-| Argument | Default | Description |
+| Variable | Default | Description |
 |---|---|---|
-| `checkpoint` | *(required)* | Path to the checkpoint to evaluate |
-| `tasks` | *(required)* | Comma-separated `task:split` pairs (e.g. `screenspot:test`) |
-| `--save_dir` | checkpoint dir | Directory to write result files |
-| `--device_batch_size` | `4` | Per-GPU batch size |
-| `--include_image` | `false` | Save screenshots alongside predictions |
-| `--max_examples` | `None` | Limit evaluation to N examples |
-| `--overwrite` | `false` | Rerun even if cached metrics exist |
-| `--seq_len` | `None` | Override sequence length |
-| `--num_workers` | `2` | Data loading workers |
+| `CHECKPOINT_PATH` | MolmoWeb-4B-Native | Path to the NATIVE model checkpoint to evaluate |
+| `MIXTURE` | `screenspot:test,screenspot_v2:test` | Comma-separated `task:split` pairs |
+| `NUM_GPUS` | `1` | Number of GPUs |
+| `DEVICE_BATCH_SIZE` | `2` | Per-GPU batch size |
+| `SAVE_FOLDER` | results | Output directory for results |
 
 ---
 

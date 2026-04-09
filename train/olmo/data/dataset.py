@@ -24,11 +24,6 @@ else:
     warnings.warn("WEBOLMO_DATA_DIR is not set, using default: /weka/oe-training-default/webolmo/datasets")
     WEB_DATA_HOME = "/weka/oe-training-default/webolmo/datasets"
 
-if "WEBOLMO_DATASET_VERSION" in os.environ:
-    WEBOLMO_DATASET_VERSION = os.environ["WEBOLMO_DATASET_VERSION"]
-else:
-    warnings.warn("WEBOLMO_DATASET_VERSION is not set, using default: webolmo_synthetic_june_2_2025")
-    WEBOLMO_DATASET_VERSION = "webolmo_synthetic_june_2_2025"
 
 PUBLIC_VIDEO_BASE_URL = "https://storage.googleapis.com/video-olmo-eval"
 
