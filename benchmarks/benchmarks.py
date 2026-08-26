@@ -223,7 +223,7 @@ def run(
     traj_timeout_in_s: float | None = 1800,
     step_timeout_in_s: float = 120,
     max_steps: int = 30,
-    env_type: Literal["browserbase", "simple"] = "simple",
+    env_type: Literal["browserbase", "browser_use", "simple"] = "simple",
     llm_response_format: ActionOutput = None,
     seed: int = 123,
     max_past_steps: int = 10,

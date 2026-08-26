@@ -108,7 +108,7 @@ Uses accessibility tree input only (no screenshot). Model defaults to `gpt-5` an
 
 ## Environments
 
-The `--env_type` flag controls which browser environment is used. Both environments require Playwright:
+The `--env_type` flag controls which browser environment is used. All environments require Playwright:
 
 ```bash
 uv run playwright install && uv run playwright install-deps
@@ -140,6 +140,22 @@ export BROWSERBASE_PROJECT_ID="your-browserbase-project-id"
 ```
 
 Use `--num_workers 5` or higher with Browserbase — each worker gets its own isolated cloud session.
+
+### `browser_use`
+
+Runs each task in an isolated Browser Use Cloud browser with stealth and a residential proxy. Set one environment variable:
+
+```bash
+export BROWSER_USE_API_KEY="your-browser-use-api-key"
+```
+
+Then select the environment:
+
+```bash
+--env_type browser_use
+```
+
+The proxy country defaults to `us`, and sessions default to 15 minutes. Override them with `BROWSER_USE_PROXY_COUNTRY_CODE` and `BROWSER_USE_TIMEOUT_MINUTES`.
 
 ---
 
@@ -344,7 +360,7 @@ uv run python -m benchmarks.benchmarks run [OPTIONS]
 | `api_key` | `str` | `None` | API key override (Gemini, GPT). Defaults to env var. |
 | `num_workers` | `int` | `5` | Parallel workers. Set `0` for sequential in-process execution. |
 | `max_steps` | `int` | `30` | Max agent steps per task. |
-| `env_type` | `str` | `"simple"` | `simple` (local Chromium) or `browserbase` (cloud). |
+| `env_type` | `str` | `"simple"` | `simple` (local Chromium), `browser_use`, or `browserbase` (cloud). |
 | `traj_timeout_in_s` | `float` | `1800` | Per-task wall-clock timeout in seconds. |
 | `step_timeout_in_s` | `float` | `120` | Per-step timeout in seconds. |
 | `max_past_steps` | `int` | `10` | Steps of history fed to the agent as context. |

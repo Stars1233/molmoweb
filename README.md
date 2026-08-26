@@ -85,6 +85,9 @@ uv run playwright install --with-deps chromium
 export BROWSERBASE_API_KEY="your-browserbase-api-key"
 export BROWSERBASE_PROJECT_ID="your-browserbase-project-id"
 
+# Browser Use Cloud (required when --env_type browser_use)
+export BROWSER_USE_API_KEY="your-browser-use-api-key"
+
 # Google Gemini (required for gemini_cua, gemini_axtree, and Gemini-based judges)
 export GOOGLE_API_KEY="your-google-api-key"
 
@@ -181,7 +184,8 @@ from inference import MolmoWeb
 
 client = MolmoWeb(
     endpoint="SET_UP_YOUR_ENDPOINT",
-    local=True,         # True = local Chromium, False = Browserbase cloud browser
+    local=False,
+    cloud_provider="browser_use",  # Browser Use Cloud; default is Browserbase
     headless=True,
 ) 
 
@@ -328,7 +332,7 @@ uv run python -m benchmarks.benchmarks judge \
 | `api_key` | `str` | `None` | API key for API-based agents (Gemini, GPT). |
 | `num_workers` | `int` | `5` | Number of parallel evaluation workers. |
 | `max_steps` | `int` | `30` | Maximum agent steps per episode. |
-| `env_type` | `str` | `"simple"` | Browser environment: `browserbase` (requires `BROWSERBASE_API_KEY` and `BROWSERBASE_PROJECT_ID`) or `simple` (local Chromium). |
+| `env_type` | `str` | `"simple"` | Browser environment: `browser_use` (requires `BROWSER_USE_API_KEY`), `browserbase`, or `simple` (local Chromium). |
 
 #### `judge` command
 
