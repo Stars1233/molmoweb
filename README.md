@@ -184,7 +184,8 @@ from inference import MolmoWeb
 
 client = MolmoWeb(
     endpoint="SET_UP_YOUR_ENDPOINT",
-    local=True,         # True = local Chromium, False = cloud browser
+    local=False,
+    cloud_provider="browser_use",  # Browser Use Cloud; default is Browserbase
     headless=True,
 ) 
 
@@ -194,10 +195,6 @@ traj = client.run(query=query, max_steps=10)
 output_path = traj.save_html(query=query)
 print(f"Saved to {output_path}")
 ```
-
-With `local=False`, `cloud_provider` selects the cloud browser: `"browserbase"` (default,
-needs `BROWSERBASE_API_KEY` and `BROWSERBASE_PROJECT_ID`) or `"browser_use"` (needs
-`BROWSER_USE_API_KEY`).
 
 ### Follow-up Query
 

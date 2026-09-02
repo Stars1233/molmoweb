@@ -25,12 +25,5 @@ dependencies = [
     "backoff>=2.0.0",
 ]
 
-[dependency-groups]
-dev = ["pytest>=8.0"]
-
-[tool.pytest.ini_options]
-# tests/ has no __init__.py, so put the repo root on sys.path for `utils`/`agent` imports.
-pythonpath = ["."]
-
 [tool.isort]
 profile = "black"
