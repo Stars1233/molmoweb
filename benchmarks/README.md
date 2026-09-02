@@ -157,6 +157,8 @@ Then select the environment:
 
 The proxy country defaults to `us`, and sessions default to 15 minutes. Override them with `BROWSER_USE_PROXY_COUNTRY_CODE` and `BROWSER_USE_TIMEOUT_MINUTES`.
 
+Sessions are stopped explicitly when the task ends, so they do not bill to their timeout.
+
 ---
 
 ## Running Evaluations

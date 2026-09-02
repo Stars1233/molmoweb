@@ -124,6 +124,11 @@ def get_trajectory(
     task_type = sample.get("task_type", "")
     uses_robust_navigation = task_type.startswith("online_mind2web") or task_type.startswith("odysseys")
 
+    # Validate outside the try below: that except turns everything into a silently
+    # failed task, which would hide a mistyped --env_type across the whole run.
+    if env_type not in ("simple", "browserbase", "browser_use"):
+        raise ValueError(f"Unknown env_type: {env_type}")
+
     try:
         if env_type == "simple":
             from utils.envs import SimpleEnv
@@ -148,6 +153,8 @@ def get_trajectory(
         elif env_type == "browser_use":
             if uses_robust_navigation:
                 print(f"robust navigation enabled for {sample['id']}")
+            # native_polyfill is a Browserbase-only browser setting, so espn/amazon
+            # results are not directly comparable between browserbase and browser_use.
             from utils.envs import BrowserUseEnv
             env = BrowserUseEnv(
                 start_url=start_url,

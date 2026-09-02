@@ -24,7 +24,6 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from io import BytesIO
 from typing import Any
-from urllib.parse import urlencode
 
 import numpy as np
 from PIL import Image
@@ -507,7 +506,9 @@ class BrowserbaseEnv(BrowserEnv):
 
 
 class BrowserUseEnv(BrowserEnv):
-    """Browser environment using a Browser Use Cloud browser over CDP."""
+    """Browser environment using Browser Use Cloud (cloud, stealth, residential proxies)."""
+
+    API = "https://api.browser-use.com/api/v4"
 
     def __init__(
         self,
@@ -522,14 +523,11 @@ class BrowserUseEnv(BrowserEnv):
         robust_navigation: bool = False,
     ):
         super().__init__(
-            start_url,
-            goal,
-            viewport_width,
-            viewport_height,
-            extract_axtree,
-            robust_navigation,
+            start_url, goal, viewport_width, viewport_height, extract_axtree, robust_navigation
         )
-        self.api_key = api_key or os.getenv("BROWSER_USE_API_KEY")
+        # An explicit key wins even when empty, so a caller cannot silently fall back
+        # to whatever happens to be in the ambient environment.
+        self.api_key = api_key if api_key is not None else os.getenv("BROWSER_USE_API_KEY")
         self.proxy_country_code = proxy_country_code or os.getenv(
             "BROWSER_USE_PROXY_COUNTRY_CODE", "us"
         )
@@ -538,6 +536,20 @@ class BrowserUseEnv(BrowserEnv):
             if session_timeout_minutes is not None
             else int(os.getenv("BROWSER_USE_TIMEOUT_MINUTES", "15"))
         )
+        self.bu_session = None
+
+    def _api(self, method: str, path: str, payload: dict) -> dict:
+        import requests
+
+        resp = requests.request(
+            method,
+            f"{self.API}{path}",
+            headers={"X-Browser-Use-API-Key": self.api_key},
+            json=payload,
+            timeout=60,
+        )
+        resp.raise_for_status()
+        return resp.json()
 
     def _launch(self):
         if not self.api_key:
@@ -545,25 +557,70 @@ class BrowserUseEnv(BrowserEnv):
         if not 1 <= self.session_timeout_minutes <= 240:
             raise ValueError("session_timeout_minutes must be between 1 and 240")
 
-        params = {
-            "apiKey": self.api_key,
-            "proxyCountryCode": self.proxy_country_code,
-            "timeout": self.session_timeout_minutes,
-            "browserScreenWidth": self.viewport_width,
-            "browserScreenHeight": self.viewport_height,
-        }
-        cdp_url = f"wss://connect.browser-use.com?{urlencode(params)}"
+        # Provision over REST rather than letting wss://connect.browser-use.com auto-create
+        # the session: only the explicit POST returns a session id, and without that id
+        # close() cannot stop the browser. Browser Use bills a session until its timeout
+        # expires -- dropping the CDP connection does not stop it.
+        self.bu_session = self._api(
+            "POST",
+            "/browsers",
+            {
+                "proxyCountryCode": self.proxy_country_code,
+                "timeout": self.session_timeout_minutes,
+                "browserScreenWidth": self.viewport_width,
+                "browserScreenHeight": self.viewport_height,
+                # Without this the viewport is whatever Browser Use feels like giving us:
+                # browserScreenWidth/Height set the virtual screen, not the viewport, and
+                # set_viewport_size() is silently ignored. With it, set_viewport_size() is
+                # honoured exactly. See _get_obs.
+                "allowResizing": True,
+            },
+        )
+        logger.info(f"Browser Use session: {self.bu_session['id']}")
 
-        self.playwright = _start_playwright()
-        self.browser = self.playwright.chromium.connect_over_cdp(cdp_url)
+        try:
+            self.playwright = _start_playwright()
+            self.browser = self.playwright.chromium.connect_over_cdp(self.bu_session["cdpUrl"])
+            # Reuse the provisioned context and page so the cloud browser keeps its
+            # stealth and proxy configuration.
+            self.context = self.browser.contexts[0]
+            self.page = self.context.pages[0]
+        except Exception:
+            # Never leave a provisioned session billing because we failed to attach to it.
+            self.close()
+            raise
 
-        # Reuse the provisioned context and page so the cloud browser keeps
-        # its stealth and proxy configuration.
-        self.context = self.browser.contexts[0]
-        self.page = self.context.pages[0]
+    def _get_obs(self) -> dict[str, Any]:
+        # New tabs open at Browser Use's own default size, and the harness follows the
+        # agent onto them, so re-fit whichever page is active before screenshotting.
+        # A context "page" listener cannot do this: calling the sync Playwright API
+        # from inside an event handler deadlocks.
+        self.page.set_viewport_size(
+            {"width": self.viewport_width, "height": self.viewport_height}
+        )
+        return super()._get_obs()
 
     def _get_info(self) -> dict[str, Any]:
-        return {"browser_provider": "browser_use"}
+        if not self.bu_session:
+            return {"browser_provider": "browser_use"}
+        return {
+            "browser_provider": "browser_use",
+            "bu_session_id": self.bu_session["id"],
+            "live_view_url": self.bu_session["liveUrl"],
+        }
+
+    def close(self):
+        if self.bu_session:
+            session_id = self.bu_session["id"]
+            # Stop before disconnecting: every billed minute counts, and a hanging
+            # browser.close() must not cost us the stop call.
+            try:
+                self._api("PATCH", f"/browsers/{session_id}", {"action": "stop"})
+            except Exception as e:
+                logger.warning(f"Failed to stop Browser Use session {session_id}: {e}")
+        super().close()
+        self.bu_session = None
+
 
 
 class SimpleEnv(BrowserEnv):
