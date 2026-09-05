@@ -110,7 +110,7 @@ def get_trajectory(
     max_steps: int = 30,
     step_timeout_in_s: float = 120,
     llm_response_format: type[ActionOutput] = None,
-    env_type: Literal["browserbase", "simple"] = "simple",
+    env_type: Literal["browserbase", "browser_use", "simple"] = "simple",
     max_past_steps: int = 3,
     max_past_images: int = 0,
     sampling_temperature: float = 0.7,
@@ -132,7 +132,7 @@ def get_trajectory(
                 goal=sample["prompt"],
                 extract_axtree=need_axtree,
             )
-        else:
+        elif env_type == "browserbase":
             if native_polyfill:
                 print(f"{sample.get('web_name')} detected -- using native polyfill for {sample['id']}")
             if uses_robust_navigation:
@@ -145,6 +145,18 @@ def get_trajectory(
                 native_polyfill=native_polyfill,
                 robust_navigation=uses_robust_navigation,
             )
+        elif env_type == "browser_use":
+            if uses_robust_navigation:
+                print(f"robust navigation enabled for {sample['id']}")
+            from utils.envs import BrowserUseEnv
+            env = BrowserUseEnv(
+                start_url=start_url,
+                goal=sample["prompt"],
+                extract_axtree=need_axtree,
+                robust_navigation=uses_robust_navigation,
+            )
+        else:
+            raise ValueError(f"Unknown env_type: {env_type}")
     except Exception as e:
         print(f"Error in env creation: {str(e)}")
         return sample["id"]
@@ -291,7 +303,7 @@ def get_trajectories(
     step_timeout_in_s: float = 120,
     llm_response_format: type[ActionOutput] = None,
     max_steps: int = 30,
-    env_type: Literal["browserbase", "simple"] = "simple",
+    env_type: Literal["browserbase", "browser_use", "simple"] = "simple",
     max_past_steps: int = 3,
     max_past_images: int = 0,
     sampling_temperature: float = 0.7,

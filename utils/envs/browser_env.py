@@ -1,12 +1,13 @@
 """
 Browser environments for web agent evaluation.
 
-Two concrete implementations:
+Three concrete implementations:
   - BrowserbaseEnv: connects to Browserbase (cloud, stealth proxies, CAPTCHA solving)
-  - LocalBrowserEnv: launches a local Chromium (headless or headed, no proxies)
+  - BrowserUseEnv: connects to Browser Use Cloud (cloud, stealth, residential proxies)
+  - SimpleEnv: launches a local Chromium (headless or headed, no proxies)
 
-Both share the same interface:
-  env = BrowserbaseEnv(start_url=..., goal=...)  # or LocalBrowserEnv(...)
+All three share the same interface:
+  env = BrowserUseEnv(start_url=..., goal=...)  # or BrowserbaseEnv(...) / SimpleEnv(...)
   obs, info = env.reset()
   obs = env.step(action)
   env.close()
@@ -502,6 +503,110 @@ class BrowserbaseEnv(BrowserEnv):
         super().close()
         self.bb = None
         self.bb_session = None
+
+
+class BrowserUseEnv(BrowserEnv):
+    """Browser environment using Browser Use Cloud (cloud, stealth, residential proxies)."""
+
+    API = "https://api.browser-use.com/api/v4"
+
+    def __init__(
+        self,
+        start_url: str = "about:blank",
+        goal: str = "",
+        viewport_width: int = 1280,
+        viewport_height: int = 720,
+        extract_axtree: bool = False,
+        api_key: str | None = None,
+        proxy_country_code: str | None = None,
+        session_timeout_minutes: int | None = None,
+        robust_navigation: bool = False,
+    ):
+        super().__init__(
+            start_url,
+            goal,
+            viewport_width,
+            viewport_height,
+            extract_axtree,
+            robust_navigation,
+        )
+        self.api_key = api_key or os.getenv("BROWSER_USE_API_KEY")
+        self.proxy_country_code = proxy_country_code or os.getenv(
+            "BROWSER_USE_PROXY_COUNTRY_CODE", "us"
+        )
+        self.session_timeout_minutes = (
+            session_timeout_minutes
+            if session_timeout_minutes is not None
+            else int(os.getenv("BROWSER_USE_TIMEOUT_MINUTES", "15"))
+        )
+        self.bu_session = None
+
+    def _api(self, method: str, path: str, payload: dict) -> dict:
+        import requests
+
+        resp = requests.request(
+            method,
+            f"{self.API}{path}",
+            headers={"X-Browser-Use-API-Key": self.api_key},
+            json=payload,
+            timeout=60,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def _launch(self):
+        if not self.api_key:
+            raise ValueError("BROWSER_USE_API_KEY required")
+        if not 1 <= self.session_timeout_minutes <= 240:
+            raise ValueError("session_timeout_minutes must be between 1 and 240")
+
+        # Create the session over REST so we have its id to stop it in close();
+        # Browser Use bills until the timeout otherwise.
+        self.bu_session = self._api(
+            "POST",
+            "/browsers",
+            {
+                "proxyCountryCode": self.proxy_country_code,
+                "timeout": self.session_timeout_minutes,
+                "browserScreenWidth": self.viewport_width,
+                "browserScreenHeight": self.viewport_height,
+                "allowResizing": True,  # otherwise set_viewport_size() is ignored
+            },
+        )
+        logger.info(f"Browser Use session: {self.bu_session['id']}")
+
+        try:
+            self.playwright = _start_playwright()
+            self.browser = self.playwright.chromium.connect_over_cdp(self.bu_session["cdpUrl"])
+            # Reuse the provisioned context and page so the cloud browser keeps
+            # its stealth and proxy configuration.
+            self.context = self.browser.contexts[0]
+            self.page = self.context.pages[0]
+        except Exception:
+            self.close()
+            raise
+
+    def _get_obs(self) -> dict[str, Any]:
+        # New tabs open at Browser Use's default size, so re-fit the active page.
+        self.page.set_viewport_size({"width": self.viewport_width, "height": self.viewport_height})
+        return super()._get_obs()
+
+    def _get_info(self) -> dict[str, Any]:
+        session = self.bu_session or {}
+        return {
+            "browser_provider": "browser_use",
+            "bu_session_id": session.get("id"),
+            "live_view_url": session.get("liveUrl"),
+        }
+
+    def close(self):
+        if self.bu_session:
+            try:
+                self._api("PATCH", f"/browsers/{self.bu_session['id']}", {"action": "stop"})
+            except Exception as e:
+                logger.warning(f"Failed to stop Browser Use session {self.bu_session['id']}: {e}")
+        super().close()
+        self.bu_session = None
 
 
 class SimpleEnv(BrowserEnv):

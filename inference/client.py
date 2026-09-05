@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
+from typing import Literal
 
 from PIL import Image
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
@@ -35,9 +36,18 @@ def _check_browserbase_credentials() -> None:
         )
 
 
+def _check_browser_use_credentials() -> None:
+    if not os.environ.get("BROWSER_USE_API_KEY", "").strip():
+        raise ValueError(
+            "Missing environment variable for Browser Use Cloud: BROWSER_USE_API_KEY. "
+            "Set it or use local=True to run with a local browser."
+        )
+
+
 def _run_one_query(
     endpoint: str,
     local: bool,
+    cloud_provider: Literal["browserbase", "browser_use"],
     query: str,
     max_steps: int,
     headless: bool = True,
@@ -46,6 +56,7 @@ def _run_one_query(
     client = MolmoWeb(
         endpoint=endpoint,
         local=local,
+        cloud_provider=cloud_provider,
         keep_alive=False,
         headless=headless,
         verbose=False,
@@ -58,8 +69,9 @@ class MolmoWeb:
     Client for running the Molmo web agent.
 
     When local=True, uses a local Chromium browser (no credentials needed).
-    When local=False, uses Browserbase (requires BROWSERBASE_API_KEY and
-    BROWSERBASE_PROJECT_ID environment variables).
+    When local=False, uses cloud_provider. Browser Use Cloud requires
+    BROWSER_USE_API_KEY; Browserbase requires BROWSERBASE_API_KEY and
+    BROWSERBASE_PROJECT_ID.
     """
 
     VIEWPORT_WIDTH = 1280
@@ -69,12 +81,16 @@ class MolmoWeb:
         self,
         endpoint: str | None = None,
         local: bool = True,
+        cloud_provider: Literal["browserbase", "browser_use"] = "browserbase",
         keep_alive: bool = True,
         headless: bool = True,
         verbose: bool = True,
     ):
         self.endpoint = endpoint or os.environ.get("MOLMOWEB_ENDPOINT")
         self.local = local
+        if cloud_provider not in ("browserbase", "browser_use"):
+            raise ValueError(f"Unknown cloud_provider: {cloud_provider}")
+        self.cloud_provider = cloud_provider
         self.keep_alive = keep_alive
         self.headless = headless
         self.verbose = verbose
@@ -115,6 +131,18 @@ class MolmoWeb:
                 viewport_height=self.VIEWPORT_HEIGHT,
                 extract_axtree=False,
                 headless=self.headless,
+            )
+
+        if self.cloud_provider == "browser_use":
+            _check_browser_use_credentials()
+            from utils.envs import BrowserUseEnv
+
+            return BrowserUseEnv(
+                start_url=start_url,
+                goal="",
+                viewport_width=self.VIEWPORT_WIDTH,
+                viewport_height=self.VIEWPORT_HEIGHT,
+                extract_axtree=False,
             )
 
         _check_browserbase_credentials()
@@ -256,6 +284,7 @@ class MolmoWeb:
                     _run_one_query,
                     self.endpoint,
                     self.local,
+                    self.cloud_provider,
                     query,
                     max_steps,
                     headless,
